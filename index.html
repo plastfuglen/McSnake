@@ -139,7 +139,7 @@
     .stat-box .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
     .stat-box .lbl { font-size: .75rem; color: var(--muted); margin-top: 2px; }
 
-    #histogram { width: 100%; height: 200px; display: block; }
+    #histogram { width: 100%; height: 320px; display: block; }
 
     .slider-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
     .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); margin-bottom: 0; }
@@ -702,7 +702,7 @@ function median(sorted) {
 function drawHistogram(turnCounts) {
   const canvas = document.getElementById('histogram');
   const W = canvas.parentElement.clientWidth - 32;
-  const H = 200;
+  const H = 320;
   canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -712,7 +712,7 @@ function drawHistogram(turnCounts) {
 
   const minV = turnCounts[0];
   const maxV = turnCounts[turnCounts.length - 1];
-  const NUM_BINS = Math.min(60, Math.max(20, maxV - minV + 1));
+  const NUM_BINS = Math.min(30, Math.max(10, maxV - minV + 1));
   const binSize  = Math.ceil((maxV - minV + 1) / NUM_BINS);
 
   const bins = new Array(NUM_BINS).fill(0);
@@ -722,7 +722,7 @@ function drawHistogram(turnCounts) {
   });
 
   const maxBin = Math.max(...bins);
-  const pad = { top: 10, right: 10, bottom: 30, left: 40 };
+  const pad = { top: 16, right: 16, bottom: 40, left: 50 };
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top  - pad.bottom;
   const bw = plotW / NUM_BINS;
@@ -747,9 +747,9 @@ function drawHistogram(turnCounts) {
 
   // X-axis labels
   ctx.fillStyle = '#555';
-  ctx.font = '11px sans-serif';
+  ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
-  const step = Math.ceil(NUM_BINS / 6);
+  const step = Math.ceil(NUM_BINS / 8);
   for (let i = 0; i < NUM_BINS; i += step) {
     const label = minV + i * binSize;
     const x = pad.left + (i + 0.5) * bw;
