@@ -735,8 +735,13 @@ function drawHistogram(turnCounts) {
 
   const minV = turnCounts[0];
   const maxV = turnCounts[turnCounts.length - 1];
-  const NUM_BINS = Math.min(30, Math.max(10, maxV - minV + 1));
-  const binSize  = Math.ceil((maxV - minV + 1) / NUM_BINS);
+  const spread = maxV - minV + 1;
+  const pad = { top: 16, right: 16, bottom: 40, left: 50 };
+  const plotW = W - pad.left - pad.right;
+  // At least 6px per bar; never more bins than distinct values
+  const maxBinsFromWidth = Math.floor(plotW / 6);
+  const NUM_BINS = Math.min(maxBinsFromWidth, spread);
+  const binSize  = Math.ceil(spread / NUM_BINS);
 
   const bins = new Array(NUM_BINS).fill(0);
   turnCounts.forEach(v => {
@@ -745,8 +750,6 @@ function drawHistogram(turnCounts) {
   });
 
   const maxBin = Math.max(...bins);
-  const pad = { top: 16, right: 16, bottom: 40, left: 50 };
-  const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top  - pad.bottom;
   const bw = plotW / NUM_BINS;
 
