@@ -139,7 +139,7 @@
     .stat-box .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
     .stat-box .lbl { font-size: .75rem; color: var(--muted); margin-top: 2px; }
 
-    #histogram { width: 100%; height: 200px; display: block; }
+    #histogram { width: 100%; height: 320px; display: block; }
 
     .slider-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
     .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); margin-bottom: 0; }
@@ -418,11 +418,24 @@ function removeLadder(i) { ladders.splice(i,1); renderLadders(); }
 function removeSnake(i)  { snakes.splice(i,1);  renderSnakes(); }
 
 function updateLadder(i, key, val) {
+  const prev = ladders[i][key];
   ladders[i][key] = parseInt(val);
+  const {from, to} = ladders[i];
+  // Exclude this entry's own from-value when checking for duplicate starts
+  const saved = ladders.splice(i, 1)[0];
+  const err = validateEntry(from, to, 'ladder');
+  ladders.splice(i, 0, saved);
+  if (err) { toast(err); ladders[i][key] = prev; renderLadders(); return; }
   drawBoard();
 }
 function updateSnake(i, key, val) {
+  const prev = snakes[i][key];
   snakes[i][key] = parseInt(val);
+  const {from, to} = snakes[i];
+  const saved = snakes.splice(i, 1)[0];
+  const err = validateEntry(from, to, 'snake');
+  snakes.splice(i, 0, saved);
+  if (err) { toast(err); snakes[i][key] = prev; renderSnakes(); return; }
   drawBoard();
 }
 
@@ -543,47 +556,46 @@ function buildTransportMap(laddersArr, snakesArr) {
   return map;
 }
 
-// Single-player game: returns number of turns to finish
+const MAX_TURNS = 1_000_000;
+
+function bounce(pos, boardSize) {
+  while (pos > boardSize) pos = 2 * boardSize - pos;
+  return pos;
+}
+
+// Single-player game: returns number of turns to finish, or null if unreachable.
 function playSingleGame(boardSize, diceSides, transportMap) {
   let pos = 0;
   let turns = 0;
-  while (true) {
+  while (turns < MAX_TURNS) {
     const roll = rollDie(diceSides);
-    let newPos = pos + roll;
-    // bounce back if overshoot
-    if (newPos > boardSize) {
-      newPos = boardSize - (newPos - boardSize);
-    }
-    // apply transport
-    if (transportMap[newPos] !== undefined) {
-      newPos = transportMap[newPos];
-    }
+    let newPos = bounce(pos + roll, boardSize);
+    if (transportMap[newPos] !== undefined) newPos = transportMap[newPos];
     pos = newPos;
     turns++;
     if (pos === boardSize) return turns;
   }
+  return null; // board configuration makes goal unreachable
 }
 
-// Multi-player game: returns [turns per player, winner index (0-based)]
-// A "turn" here = one full round (each player rolls once).
-// We track actual rolls per player and who finishes first.
+// Multi-player game: returns { rollCounts, winner } or null if unreachable.
 function playMultiGame(boardSize, diceSides, transportMap, numPlayers) {
   const positions = new Array(numPlayers).fill(0);
   const rollCounts = new Array(numPlayers).fill(0);
-  while (true) {
+  let totalRolls = 0;
+  while (totalRolls < MAX_TURNS) {
     for (let p = 0; p < numPlayers; p++) {
-      if (positions[p] === boardSize) continue; // already done
+      if (positions[p] === boardSize) continue;
       const roll = rollDie(diceSides);
-      let newPos = positions[p] + roll;
-      if (newPos > boardSize) newPos = boardSize - (newPos - boardSize);
+      let newPos = bounce(positions[p] + roll, boardSize);
       if (transportMap[newPos] !== undefined) newPos = transportMap[newPos];
       positions[p] = newPos;
       rollCounts[p]++;
-      if (newPos === boardSize) {
-        return { rollCounts, winner: p };
-      }
+      totalRolls++;
+      if (newPos === boardSize) return { rollCounts, winner: p };
     }
   }
+  return null;
 }
 
 function startSimulation() {
@@ -610,14 +622,17 @@ function startSimulation() {
   const turnCounts = [];        // single: turns; multi: rounds (max roll count)
   const playerRolls = numPlayers > 1 ? Array.from({length: numPlayers}, () => []) : null;
   const winCounts   = numPlayers > 1 ? new Array(numPlayers).fill(0) : null;
+  let stuckCount = 0;
 
   function runChunk() {
     const end = Math.min(done + CHUNK, numSims);
     for (let i = done; i < end; i++) {
       if (numPlayers === 1) {
-        turnCounts.push(playSingleGame(boardSize, diceSides, transportMap));
+        const t = playSingleGame(boardSize, diceSides, transportMap);
+        if (t === null) { stuckCount++; } else { turnCounts.push(t); }
       } else {
         const res = playMultiGame(boardSize, diceSides, transportMap, numPlayers);
+        if (res === null) { stuckCount++; continue; }
         // "turns" for multi = max rolls among all players (game length)
         turnCounts.push(Math.max(...res.rollCounts));
         winCounts[res.winner]++;
@@ -632,14 +647,22 @@ function startSimulation() {
     if (done < numSims) {
       setTimeout(runChunk, 0);
     } else {
-      finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSims);
+      finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSims, stuckCount);
     }
   }
 
   setTimeout(runChunk, 0);
 }
 
-function finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSims) {
+function finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSims, stuckCount) {
+  if (stuckCount > 0) {
+    toast(`Advarsel: ${stuckCount} av ${numSims} spill nådde aldri målet (brettet er trolig uoppnåelig med denne konfigurasjonen).`);
+  }
+  if (turnCounts.length === 0) {
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('progressWrap').style.display = 'none';
+    return;
+  }
   turnCounts.sort((a,b) => a - b);
 
   const avg    = (turnCounts.reduce((s,v) => s+v, 0) / turnCounts.length).toFixed(1);
@@ -702,7 +725,7 @@ function median(sorted) {
 function drawHistogram(turnCounts) {
   const canvas = document.getElementById('histogram');
   const W = canvas.parentElement.clientWidth - 32;
-  const H = 200;
+  const H = 320;
   canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -712,7 +735,7 @@ function drawHistogram(turnCounts) {
 
   const minV = turnCounts[0];
   const maxV = turnCounts[turnCounts.length - 1];
-  const NUM_BINS = Math.min(60, Math.max(20, maxV - minV + 1));
+  const NUM_BINS = Math.min(30, Math.max(10, maxV - minV + 1));
   const binSize  = Math.ceil((maxV - minV + 1) / NUM_BINS);
 
   const bins = new Array(NUM_BINS).fill(0);
@@ -722,7 +745,7 @@ function drawHistogram(turnCounts) {
   });
 
   const maxBin = Math.max(...bins);
-  const pad = { top: 10, right: 10, bottom: 30, left: 40 };
+  const pad = { top: 16, right: 16, bottom: 40, left: 50 };
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top  - pad.bottom;
   const bw = plotW / NUM_BINS;
@@ -747,9 +770,9 @@ function drawHistogram(turnCounts) {
 
   // X-axis labels
   ctx.fillStyle = '#555';
-  ctx.font = '11px sans-serif';
+  ctx.font = '12px sans-serif';
   ctx.textAlign = 'center';
-  const step = Math.ceil(NUM_BINS / 6);
+  const step = Math.ceil(NUM_BINS / 8);
   for (let i = 0; i < NUM_BINS; i += step) {
     const label = minV + i * binSize;
     const x = pad.left + (i + 0.5) * bw;
