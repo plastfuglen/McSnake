@@ -680,6 +680,7 @@ function finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSim
     <div class="stat-box"><div class="val">${maxT}</div><div class="lbl">Maksimum trekk</div></div>
   `;
 
+  document.getElementById('resultsCard').style.display = 'block';
   drawHistogram(turnCounts);
 
   // Slider
@@ -709,7 +710,6 @@ function finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSim
 
   document.getElementById('progressWrap').style.display = 'none';
   document.getElementById('runBtn').disabled = false;
-  document.getElementById('resultsCard').style.display = 'block';
 }
 
 function median(sorted) {
@@ -738,8 +738,9 @@ function drawHistogram(turnCounts) {
   const spread = maxV - minV + 1;
   const pad = { top: 16, right: 16, bottom: 40, left: 50 };
   const plotW = W - pad.left - pad.right;
+  if (plotW <= 0) return;
   // At least 6px per bar; never more bins than distinct values
-  const maxBinsFromWidth = Math.floor(plotW / 6);
+  const maxBinsFromWidth = Math.max(1, Math.floor(plotW / 6));
   const NUM_BINS = Math.min(maxBinsFromWidth, spread);
   const binSize  = Math.ceil(spread / NUM_BINS);
 
