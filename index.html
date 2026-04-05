@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stigespill – Monte Carlo-simulasjon</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f0f4f0;
+      --surface:   #ffffff;
+      --border:    #c8d8c8;
+      --accent:    #2e7d32;
+      --accent2:   #43a047;
+      --danger:    #c62828;
+      --danger2:   #e53935;
+      --text:      #1b2a1b;
+      --muted:     #5a7a5a;
+      --radius:    8px;
+      --shadow:    0 2px 8px rgba(0,0,0,.10);
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    h1 { font-size: 1.7rem; color: var(--accent); margin-bottom: 4px; }
+    h2 { font-size: 1.1rem; color: var(--accent); margin-bottom: 12px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
+    h3 { font-size: .95rem; color: var(--muted); margin-bottom: 8px; }
+
+    .subtitle { color: var(--muted); margin-bottom: 20px; font-size: .9rem; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+
+    input[type="number"], select {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: .95rem;
+      color: var(--text);
+      background: var(--bg);
+      margin-bottom: 10px;
+    }
+
+    input[type="number"]:focus, select:focus { outline: 2px solid var(--accent2); }
+
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+
+    button {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 14px;
+      border: none; border-radius: var(--radius);
+      cursor: pointer; font-size: .9rem; font-weight: 600;
+      transition: filter .15s;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:active { filter: brightness(.95); }
+    button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+
+    .btn-primary   { background: var(--accent);  color: #fff; }
+    .btn-secondary { background: var(--accent2); color: #fff; }
+    .btn-danger    { background: var(--danger);  color: #fff; }
+    .btn-outline   { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+    .btn-run       { background: var(--accent); color: #fff; width: 100%; padding: 12px; font-size: 1rem; margin-top: 4px; }
+
+    /* ---- Snake / Ladder list ---- */
+    .sl-list { list-style: none; margin-bottom: 8px; }
+    .sl-list li {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .sl-list li:last-child { border-bottom: none; }
+    .sl-list input[type="number"] { width: 70px; margin-bottom: 0; flex: 1; }
+    .sl-badge {
+      font-size: .75rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+      min-width: 22px; text-align: center;
+    }
+    .badge-snake  { background: #ffcdd2; color: var(--danger); }
+    .badge-ladder { background: #c8e6c9; color: var(--accent); }
+
+    .sl-add-row { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; }
+    .sl-add-row input { flex: 1; margin-bottom: 0; }
+    .sl-add-row label { font-size: .75rem; }
+
+    /* ---- Progress ---- */
+    #progressWrap {
+      display: none;
+      margin-top: 10px;
+    }
+    #progressBar {
+      width: 100%; height: 12px;
+      background: var(--border); border-radius: 6px; overflow: hidden;
+    }
+    #progressFill {
+      height: 100%; background: var(--accent2);
+      transition: width .1s linear;
+      width: 0%;
+    }
+    #progressLabel { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+
+    /* ---- Results ---- */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px; margin-bottom: 16px;
+    }
+    .stat-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px; text-align: center;
+    }
+    .stat-box .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+    .stat-box .lbl { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+
+    #histogram { width: 100%; height: 200px; display: block; }
+
+    .slider-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); margin-bottom: 0; }
+    .slider-row span { font-size: .9rem; white-space: nowrap; }
+    #pctResult { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+
+    /* ---- Multi-player results ---- */
+    #multiResults { display: none; }
+    .mp-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    .mp-table th { background: var(--bg); padding: 6px 10px; text-align: left; border-bottom: 2px solid var(--border); }
+    .mp-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+
+    /* ---- Mini board ---- */
+    #miniBoard { display: block; width: 100%; image-rendering: pixelated; }
+    #boardWrap canvas { border-radius: 4px; }
+
+    /* ---- Toaster ---- */
+    #toaster {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #333; color: #fff; padding: 10px 20px;
+      border-radius: 6px; font-size: .9rem; opacity: 0;
+      pointer-events: none; transition: opacity .3s;
+      z-index: 1000;
+    }
+    #toaster.show { opacity: 1; }
+
+    .empty-msg { color: var(--muted); font-size: .85rem; font-style: italic; padding: 4px 0; }
+  </style>
+</head>
+<body>
+
+<div style="max-width:1200px;margin:0 auto 12px;">
+  <h1>&#127922; Stigespill – Monte Carlo</h1>
+  <p class="subtitle">Simuler tusenvis av spill og se statistikken</p>
+</div>
+
+<div class="layout">
+  <!-- ========== LEFT COLUMN ========== -->
+  <div>
+
+    <!-- Board config -->
+    <div class="card">
+      <h2>Brettkonfigurasjon</h2>
+      <div class="row">
+        <div>
+          <label for="boardSize">Antall ruter</label>
+          <input type="number" id="boardSize" value="100" min="10" max="500" />
+        </div>
+        <div>
+          <label for="diceSides">Terningssider</label>
+          <input type="number" id="diceSides" value="6" min="2" max="20" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="numPlayers">Antall spillere</label>
+          <input type="number" id="numPlayers" value="1" min="1" max="4" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Ladders -->
+    <div class="card">
+      <h2>Stiger (nedre → øvre)</h2>
+      <ul class="sl-list" id="ladderList"></ul>
+      <div class="sl-add-row">
+        <div>
+          <label>Fra (nedre)</label>
+          <input type="number" id="ladderFrom" min="2" placeholder="f.eks 4" />
+        </div>
+        <div>
+          <label>Til (øvre)</label>
+          <input type="number" id="ladderTo" min="3" placeholder="f.eks 14" />
+        </div>
+        <button class="btn-secondary" onclick="addLadder()">+ Legg til</button>
+      </div>
+    </div>
+
+    <!-- Snakes -->
+    <div class="card">
+      <h2>Slanger (øvre → nedre)</h2>
+      <ul class="sl-list" id="snakeList"></ul>
+      <div class="sl-add-row">
+        <div>
+          <label>Fra (øvre)</label>
+          <input type="number" id="snakeFrom" min="2" placeholder="f.eks 17" />
+        </div>
+        <div>
+          <label>Til (nedre)</label>
+          <input type="number" id="snakeTo" min="1" placeholder="f.eks 7" />
+        </div>
+        <button class="btn-danger" onclick="addSnake()">+ Legg til</button>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn-outline" onclick="resetToClassic()" style="width:100%;">
+          &#9654; Tilbakestill til klassisk layout
+        </button>
+      </div>
+    </div>
+
+    <!-- Simulation settings -->
+    <div class="card">
+      <h2>Simuleringsinnstillinger</h2>
+      <label for="numSims">Antall simuleringer</label>
+      <select id="numSims">
+        <option value="1000">1 000</option>
+        <option value="10000" selected>10 000</option>
+        <option value="100000">100 000</option>
+      </select>
+      <button class="btn-run" id="runBtn" onclick="startSimulation()">
+        &#9658; Kjør simulasjon
+      </button>
+      <div id="progressWrap">
+        <div id="progressBar"><div id="progressFill"></div></div>
+        <div id="progressLabel">Starter…</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ========== RIGHT COLUMN ========== -->
+  <div>
+
+    <!-- Mini board -->
+    <div class="card" id="boardWrap">
+      <h2>Brettoversikt</h2>
+      <canvas id="miniBoard" height="300"></canvas>
+    </div>
+
+    <!-- Results -->
+    <div class="card" id="resultsCard" style="display:none;">
+      <h2>Resultater</h2>
+
+      <div class="stats-grid" id="statsGrid"></div>
+
+      <h3>Fordeling av antall trekk</h3>
+      <canvas id="histogram"></canvas>
+
+      <div style="margin-top:14px;">
+        <h3>Sannsynlighet for å fullføre innen N trekk</h3>
+        <div class="slider-row">
+          <input type="range" id="nSlider" min="1" max="300" value="50" oninput="updatePct()" />
+          <span>N = <b id="nVal">50</b></span>
+        </div>
+        <div style="margin-top:6px;">
+          Sjanse: <span id="pctResult">–</span>
+        </div>
+      </div>
+
+      <!-- Multi-player section -->
+      <div id="multiResults" style="margin-top:16px;">
+        <h3>Flerspillerresultater</h3>
+        <table class="mp-table" id="mpTable">
+          <thead><tr><th>Spiller</th><th>Snitt trekk</th><th>Vinnersjanser</th></tr></thead>
+          <tbody id="mpBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toaster"></div>
+
+<script>
+/* ============================================================
+   DATA
+   ============================================================ */
+const CLASSIC_LADDERS = [
+  [4,14],[9,31],[20,38],[28,84],[40,59],[51,67],[63,81],[71,91]
+];
+const CLASSIC_SNAKES = [
+  [17,7],[54,34],[62,19],[64,60],[87,24],[93,73],[95,75],[99,78]
+];
+
+let ladders = [];  // [{from, to}]
+let snakes  = [];  // [{from, to}]
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+function toast(msg, dur=2500) {
+  const t = document.getElementById('toaster');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+/* ============================================================
+   SNAKE / LADDER MANAGEMENT
+   ============================================================ */
+function getBoardSize() {
+  return Math.max(10, Math.min(500, parseInt(document.getElementById('boardSize').value) || 100));
+}
+
+function allStarts() {
+  return [...ladders.map(l=>l.from), ...snakes.map(s=>s.from)];
+}
+
+function validateEntry(from, to, type) {
+  const bs = getBoardSize();
+  if (isNaN(from) || isNaN(to)) return 'Ugyldig tall.';
+  if (from < 1 || to < 1 || from > bs || to > bs) return `Rute må være mellom 1 og ${bs}.`;
+  if (from === 1 || from === bs) return `Start kan ikke være rute 1 eller ${bs}.`;
+  if (to === bs) return `Slutt kan ikke være rute ${bs} (mål).`;
+  if (type === 'ladder') {
+    if (to <= from) return 'Stige: "til" må være høyere enn "fra".';
+  } else {
+    if (to >= from) return 'Slange: "til" må være lavere enn "fra".';
+    if (to < 1) return '"Til" må være minst 1.';
+  }
+  const starts = allStarts();
+  if (starts.includes(from)) return `Rute ${from} har allerede en slange/stige.`;
+  return null;
+}
+
+function renderLadders() {
+  const ul = document.getElementById('ladderList');
+  if (ladders.length === 0) {
+    ul.innerHTML = '<li><span class="empty-msg">Ingen stiger lagt til</span></li>';
+    return;
+  }
+  ul.innerHTML = ladders.map((l,i) =>
+    `<li>
+      <span class="sl-badge badge-ladder">S</span>
+      <input type="number" value="${l.from}" onchange="updateLadder(${i},'from',this.value)" />
+      <span style="color:var(--accent);font-weight:700;">&#8594;</span>
+      <input type="number" value="${l.to}" onchange="updateLadder(${i},'to',this.value)" />
+      <button class="btn-outline" style="padding:4px 8px;" onclick="removeLadder(${i})">&#10005;</button>
+    </li>`
+  ).join('');
+  drawBoard();
+}
+
+function renderSnakes() {
+  const ul = document.getElementById('snakeList');
+  if (snakes.length === 0) {
+    ul.innerHTML = '<li><span class="empty-msg">Ingen slanger lagt til</span></li>';
+    return;
+  }
+  ul.innerHTML = snakes.map((s,i) =>
+    `<li>
+      <span class="sl-badge badge-snake">&#9650;</span>
+      <input type="number" value="${s.from}" onchange="updateSnake(${i},'from',this.value)" />
+      <span style="color:var(--danger);font-weight:700;">&#8594;</span>
+      <input type="number" value="${s.to}" onchange="updateSnake(${i},'to',this.value)" />
+      <button class="btn-outline" style="padding:4px 8px;" onclick="removeSnake(${i})">&#10005;</button>
+    </li>`
+  ).join('');
+  drawBoard();
+}
+
+function addLadder() {
+  const from = parseInt(document.getElementById('ladderFrom').value);
+  const to   = parseInt(document.getElementById('ladderTo').value);
+  const err  = validateEntry(from, to, 'ladder');
+  if (err) { toast(err); return; }
+  ladders.push({from, to});
+  document.getElementById('ladderFrom').value = '';
+  document.getElementById('ladderTo').value   = '';
+  renderLadders();
+}
+
+function addSnake() {
+  const from = parseInt(document.getElementById('snakeFrom').value);
+  const to   = parseInt(document.getElementById('snakeTo').value);
+  const err  = validateEntry(from, to, 'snake');
+  if (err) { toast(err); return; }
+  snakes.push({from, to});
+  document.getElementById('snakeFrom').value = '';
+  document.getElementById('snakeTo').value   = '';
+  renderSnakes();
+}
+
+function removeLadder(i) { ladders.splice(i,1); renderLadders(); }
+function removeSnake(i)  { snakes.splice(i,1);  renderSnakes(); }
+
+function updateLadder(i, key, val) {
+  ladders[i][key] = parseInt(val);
+  drawBoard();
+}
+function updateSnake(i, key, val) {
+  snakes[i][key] = parseInt(val);
+  drawBoard();
+}
+
+function resetToClassic() {
+  document.getElementById('boardSize').value = '100';
+  ladders = CLASSIC_LADDERS.map(([from,to]) => ({from,to}));
+  snakes  = CLASSIC_SNAKES.map(([from,to])  => ({from,to}));
+  renderLadders();
+  renderSnakes();
+  drawBoard();
+  toast('Klassisk layout lastet.');
+}
+
+/* ============================================================
+   MINI BOARD DRAWING
+   ============================================================ */
+function drawBoard() {
+  const canvas = document.getElementById('miniBoard');
+  const bs = getBoardSize();
+  const cols = Math.round(Math.sqrt(bs));
+  const rows = Math.ceil(bs / cols);
+  const cell = Math.max(8, Math.min(28, Math.floor((canvas.parentElement.clientWidth - 32) / cols)));
+  canvas.width  = cols * cell;
+  canvas.height = rows * cell;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Build lookup maps
+  const ladderMap = {};
+  ladders.forEach(l => { ladderMap[l.from] = l.to; });
+  const snakeMap = {};
+  snakes.forEach(s => { snakeMap[s.from] = s.to; });
+
+  function cellPos(n) {
+    // n is 1-based square number
+    const idx = n - 1;
+    const row = Math.floor(idx / cols); // row from bottom
+    const col = (row % 2 === 0) ? (idx % cols) : (cols - 1 - idx % cols);
+    const y = (rows - 1 - row) * cell;
+    const x = col * cell;
+    return {x, y};
+  }
+
+  // Draw cells
+  for (let n = 1; n <= bs; n++) {
+    const {x, y} = cellPos(n);
+    let fill = '#e8f5e9';
+    if (n === 1)  fill = '#fffde7';
+    if (n === bs) fill = '#fff9c4';
+    if (ladderMap[n]) fill = '#c8e6c9';
+    if (snakeMap[n])  fill = '#ffcdd2';
+    ctx.fillStyle = fill;
+    ctx.fillRect(x+1, y+1, cell-2, cell-2);
+    if (cell >= 14) {
+      ctx.fillStyle = '#555';
+      ctx.font = `${Math.max(7, cell*0.38)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(n, x + cell/2, y + cell/2);
+    }
+  }
+
+  // Draw ladder lines
+  ladders.forEach(l => {
+    if (l.from < 1 || l.to > bs) return;
+    const p1 = cellPos(l.from);
+    const p2 = cellPos(l.to);
+    ctx.strokeStyle = '#2e7d32';
+    ctx.lineWidth = Math.max(1.5, cell * 0.12);
+    ctx.beginPath();
+    ctx.moveTo(p1.x + cell/2, p1.y + cell/2);
+    ctx.lineTo(p2.x + cell/2, p2.y + cell/2);
+    ctx.stroke();
+    // arrowhead
+    drawArrow(ctx, p1.x+cell/2, p1.y+cell/2, p2.x+cell/2, p2.y+cell/2, '#2e7d32', cell*0.3);
+  });
+
+  // Draw snake lines
+  snakes.forEach(s => {
+    if (s.from < 1 || s.to < 1) return;
+    const p1 = cellPos(s.from);
+    const p2 = cellPos(s.to);
+    ctx.strokeStyle = '#c62828';
+    ctx.lineWidth = Math.max(1.5, cell * 0.12);
+    ctx.beginPath();
+    ctx.moveTo(p1.x + cell/2, p1.y + cell/2);
+    ctx.lineTo(p2.x + cell/2, p2.y + cell/2);
+    ctx.stroke();
+    drawArrow(ctx, p1.x+cell/2, p1.y+cell/2, p2.x+cell/2, p2.y+cell/2, '#c62828', cell*0.3);
+  });
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color, size) {
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const s = Math.min(size, 8);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - s * Math.cos(angle - Math.PI/6), y2 - s * Math.sin(angle - Math.PI/6));
+  ctx.lineTo(x2 - s * Math.cos(angle + Math.PI/6), y2 - s * Math.sin(angle + Math.PI/6));
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* ============================================================
+   SIMULATION (chunked with setTimeout to keep UI responsive)
+   ============================================================ */
+let simResults = null;  // stored for slider
+
+function rollDie(sides) {
+  return Math.floor(Math.random() * sides) + 1;
+}
+
+function buildTransportMap(laddersArr, snakesArr) {
+  const map = {};
+  laddersArr.forEach(l => { map[l.from] = l.to; });
+  snakesArr.forEach(s  => { map[s.from] = s.to; });
+  return map;
+}
+
+// Single-player game: returns number of turns to finish
+function playSingleGame(boardSize, diceSides, transportMap) {
+  let pos = 0;
+  let turns = 0;
+  while (true) {
+    const roll = rollDie(diceSides);
+    let newPos = pos + roll;
+    // bounce back if overshoot
+    if (newPos > boardSize) {
+      newPos = boardSize - (newPos - boardSize);
+    }
+    // apply transport
+    if (transportMap[newPos] !== undefined) {
+      newPos = transportMap[newPos];
+    }
+    pos = newPos;
+    turns++;
+    if (pos === boardSize) return turns;
+  }
+}
+
+// Multi-player game: returns [turns per player, winner index (0-based)]
+// A "turn" here = one full round (each player rolls once).
+// We track actual rolls per player and who finishes first.
+function playMultiGame(boardSize, diceSides, transportMap, numPlayers) {
+  const positions = new Array(numPlayers).fill(0);
+  const rollCounts = new Array(numPlayers).fill(0);
+  while (true) {
+    for (let p = 0; p < numPlayers; p++) {
+      if (positions[p] === boardSize) continue; // already done
+      const roll = rollDie(diceSides);
+      let newPos = positions[p] + roll;
+      if (newPos > boardSize) newPos = boardSize - (newPos - boardSize);
+      if (transportMap[newPos] !== undefined) newPos = transportMap[newPos];
+      positions[p] = newPos;
+      rollCounts[p]++;
+      if (newPos === boardSize) {
+        return { rollCounts, winner: p };
+      }
+    }
+  }
+}
+
+function startSimulation() {
+  const boardSize  = getBoardSize();
+  const diceSides  = Math.max(2, Math.min(20, parseInt(document.getElementById('diceSides').value) || 6));
+  const numPlayers = Math.max(1, Math.min(4, parseInt(document.getElementById('numPlayers').value) || 1));
+  const numSims    = parseInt(document.getElementById('numSims').value) || 10000;
+
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('resultsCard').style.display = 'none';
+
+  const progressWrap = document.getElementById('progressWrap');
+  const progressFill = document.getElementById('progressFill');
+  const progressLabel= document.getElementById('progressLabel');
+  progressWrap.style.display = 'block';
+  progressFill.style.width = '0%';
+  progressLabel.textContent = 'Starter…';
+
+  const transportMap = buildTransportMap(ladders, snakes);
+  const CHUNK = 500;
+  let done = 0;
+
+  // Storage
+  const turnCounts = [];        // single: turns; multi: rounds (max roll count)
+  const playerRolls = numPlayers > 1 ? Array.from({length: numPlayers}, () => []) : null;
+  const winCounts   = numPlayers > 1 ? new Array(numPlayers).fill(0) : null;
+
+  function runChunk() {
+    const end = Math.min(done + CHUNK, numSims);
+    for (let i = done; i < end; i++) {
+      if (numPlayers === 1) {
+        turnCounts.push(playSingleGame(boardSize, diceSides, transportMap));
+      } else {
+        const res = playMultiGame(boardSize, diceSides, transportMap, numPlayers);
+        // "turns" for multi = max rolls among all players (game length)
+        turnCounts.push(Math.max(...res.rollCounts));
+        winCounts[res.winner]++;
+        res.rollCounts.forEach((r, pi) => playerRolls[pi].push(r));
+      }
+    }
+    done = end;
+    const pct = (done / numSims * 100).toFixed(0);
+    progressFill.style.width = pct + '%';
+    progressLabel.textContent = `${done.toLocaleString('no')} / ${numSims.toLocaleString('no')} simuleringer…`;
+
+    if (done < numSims) {
+      setTimeout(runChunk, 0);
+    } else {
+      finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSims);
+    }
+  }
+
+  setTimeout(runChunk, 0);
+}
+
+function finishSimulation(turnCounts, playerRolls, winCounts, numPlayers, numSims) {
+  turnCounts.sort((a,b) => a - b);
+
+  const avg    = (turnCounts.reduce((s,v) => s+v, 0) / turnCounts.length).toFixed(1);
+  const med    = median(turnCounts).toFixed(1);
+  const minT   = turnCounts[0];
+  const maxT   = turnCounts[turnCounts.length - 1];
+
+  simResults = { turnCounts, playerRolls, winCounts, numPlayers, numSims, avg, med, minT, maxT };
+
+  // Show stats
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-box"><div class="val">${avg}</div><div class="lbl">Gjennomsnitt trekk</div></div>
+    <div class="stat-box"><div class="val">${med}</div><div class="lbl">Median trekk</div></div>
+    <div class="stat-box"><div class="val">${minT}</div><div class="lbl">Minimum trekk</div></div>
+    <div class="stat-box"><div class="val">${maxT}</div><div class="lbl">Maksimum trekk</div></div>
+  `;
+
+  drawHistogram(turnCounts);
+
+  // Slider
+  const slider = document.getElementById('nSlider');
+  slider.max   = Math.min(maxT, 500);
+  slider.value = Math.min(Math.round(parseFloat(avg) * 1.5), parseInt(slider.max));
+  updatePct();
+
+  // Multi-player
+  const mpSection = document.getElementById('multiResults');
+  if (numPlayers > 1 && playerRolls && winCounts) {
+    mpSection.style.display = 'block';
+    const tbody = document.getElementById('mpBody');
+    tbody.innerHTML = '';
+    for (let p = 0; p < numPlayers; p++) {
+      const pRolls = playerRolls[p];
+      pRolls.sort((a,b) => a-b);
+      const pAvg = (pRolls.reduce((s,v)=>s+v,0)/pRolls.length).toFixed(1);
+      const winPct = (winCounts[p] / numSims * 100).toFixed(1);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>Spiller ${p+1}</td><td>${pAvg}</td><td>${winPct}%</td>`;
+      tbody.appendChild(tr);
+    }
+  } else {
+    mpSection.style.display = 'none';
+  }
+
+  document.getElementById('progressWrap').style.display = 'none';
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('resultsCard').style.display = 'block';
+}
+
+function median(sorted) {
+  const m = sorted.length;
+  return m % 2 === 0
+    ? (sorted[m/2 - 1] + sorted[m/2]) / 2
+    : sorted[Math.floor(m/2)];
+}
+
+/* ============================================================
+   HISTOGRAM
+   ============================================================ */
+function drawHistogram(turnCounts) {
+  const canvas = document.getElementById('histogram');
+  const W = canvas.parentElement.clientWidth - 32;
+  const H = 200;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  if (!turnCounts || turnCounts.length === 0) return;
+
+  const minV = turnCounts[0];
+  const maxV = turnCounts[turnCounts.length - 1];
+  const NUM_BINS = Math.min(60, Math.max(20, maxV - minV + 1));
+  const binSize  = Math.ceil((maxV - minV + 1) / NUM_BINS);
+
+  const bins = new Array(NUM_BINS).fill(0);
+  turnCounts.forEach(v => {
+    const bi = Math.min(Math.floor((v - minV) / binSize), NUM_BINS - 1);
+    bins[bi]++;
+  });
+
+  const maxBin = Math.max(...bins);
+  const pad = { top: 10, right: 10, bottom: 30, left: 40 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top  - pad.bottom;
+  const bw = plotW / NUM_BINS;
+
+  // Bars
+  bins.forEach((count, i) => {
+    const bh = (count / maxBin) * plotH;
+    const x  = pad.left + i * bw;
+    const y  = pad.top  + plotH - bh;
+    ctx.fillStyle = '#43a047';
+    ctx.fillRect(x + 1, y, Math.max(1, bw - 2), bh);
+  });
+
+  // Axes
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, pad.top + plotH);
+  ctx.lineTo(pad.left + plotW, pad.top + plotH);
+  ctx.stroke();
+
+  // X-axis labels
+  ctx.fillStyle = '#555';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+  const step = Math.ceil(NUM_BINS / 6);
+  for (let i = 0; i < NUM_BINS; i += step) {
+    const label = minV + i * binSize;
+    const x = pad.left + (i + 0.5) * bw;
+    ctx.fillText(label, x, H - 6);
+  }
+  // last label
+  ctx.fillText(maxV, pad.left + (NUM_BINS - 0.5) * bw, H - 6);
+
+  // Y-axis labels
+  ctx.textAlign = 'right';
+  ctx.fillText(maxBin, pad.left - 4, pad.top + 10);
+  ctx.fillText(Math.round(maxBin/2), pad.left - 4, pad.top + plotH/2);
+  ctx.fillText(0, pad.left - 4, pad.top + plotH);
+}
+
+/* ============================================================
+   PERCENTAGE SLIDER
+   ============================================================ */
+function updatePct() {
+  if (!simResults) return;
+  const n = parseInt(document.getElementById('nSlider').value);
+  document.getElementById('nVal').textContent = n;
+  const { turnCounts } = simResults;
+  const count = turnCounts.filter(v => v <= n).length;
+  const pct = (count / turnCounts.length * 100).toFixed(1);
+  document.getElementById('pctResult').textContent = `${pct}%`;
+}
+
+/* ============================================================
+   BOARD SIZE CHANGE → redraw
+   ============================================================ */
+document.getElementById('boardSize').addEventListener('change', () => {
+  drawBoard();
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+resetToClassic();
+// Override toast from resetToClassic
+setTimeout(() => {
+  const t = document.getElementById('toaster');
+  t.classList.remove('show');
+}, 100);
+drawBoard();
+</script>
+</body>
+</html>
